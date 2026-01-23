@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "canoncomparator"
+version = "0.1.0"
+description = "Compare your library's track counts against the mode of track counts of releases of a MusicBrainz release-group."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "requests>=2.31",
+]
+
+[project.scripts]
+canoncomparator = "canoncomparator.__main__:main"
