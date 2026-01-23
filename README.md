@@ -9,6 +9,21 @@ It supports:
 
 ## Install (recommended)
 
+### Install as User
+
+```bash
+sudo apt update
+sudo apt install -y pipx
+pipx ensurepath
+# restart your terminal (or: source ~/.bashrc)
+pipx install git+https://github.com/sn0skier/CanonComparator.git
+```
+
+Test with `canoncomparator --help`
+> If `canoncomparator` is “command not found”, run `pipx ensurepath` and restart your terminal.
+
+### Install as Developer
+
 ```bash
 git clone <your-repo-url>
 cd CanonComparator
