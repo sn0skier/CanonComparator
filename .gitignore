@@ -3,4 +3,5 @@ __pycache__/
 *.pyc
 *.sqlite
 *.db
-*.csvcanoncomparator.egg-info/
+*.csv
+canoncomparator.egg-info/
