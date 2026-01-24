@@ -62,6 +62,7 @@ def build_rows(
 
         rows.append({
             "rgid": it.rgid,
+            "mb_release_group_url": f"https://musicbrainz.org/release-group/{it.rgid}",
             "artist": it.artist or "",
             "title": it.title or "",
             "min_owned_minus_canon": min_owned_minus_canon,

@@ -119,6 +119,7 @@ def main() -> int:
 
     fieldnames = [
         "rgid",
+        "mb_release_group_url",
         "artist",
         "title",
         "owned_track_count",
