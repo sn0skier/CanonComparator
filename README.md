@@ -93,4 +93,27 @@ To sort overrides (overwrites the `overrides.toml` file):
 
 `canoncomparator --sort-overrides`
 
+## CSV columns explained
+
+Each row represents a single MusicBrainz release-group (RGID) present in your library.
+
+| Column | Meaning |
+|------|--------|
+| `rgid` | MusicBrainz Release Group ID |
+| `mb_release_group_url` | Direct link to the MusicBrainz release-group web page |
+| `artist` | Artist name as reported by the library provider (Lidarr) |
+| `title` | Release-group title as reported by the library provider (Lidarr) |
+| `owned_track_count` | Total number of tracks you own for this release-group (all discs summed) |
+| `canon_track_counts` | Track counts considered “canon” (from overrides or MB mode: see `mb_mode_track_count`) |
+| `min_owned_minus_canon` | Minimum difference between track count in your library and any canon value (0 is ideal) |
+| `owned_matches_canon` | `True` if your library's track count matches any canon value (`min_owned_minus_canon` = 0) |
+| `canon_source` | Where canon values came from (`override`, `mb_mode`, or `none`) |
+| `mb_mode_track_count` | Most common track count among MB releases in this release-group |
+| `diff_owned_minus_mode` | Your library's track count minus MB mode track count |
+| `mode_release_count` | Number of MB releases that have the mode track count |
+| `owned_trackcount_release_count` | Number of MB releases that match your library's track count |
+| `mb_release_count` | Total number of MB releases in the release-group |
+| `mb_histogram_tracks_releases_json` | JSON mapping `"TrackCount": ReleaseCount` |
+| `override_suggestion` | Ready-to-copy entry for `overrides.toml` |
+
 ---
