@@ -51,7 +51,7 @@ cache = "~/.cache/cancomp/mb_cache.sqlite"
 
 [musicbrainz]
 app_name = "CanonComparator"
-version = "0.1.0"
+version = "0.1.1"
 contact = "https://github.com/sn0skier/CanonComparator" # REPLACE WITH A WAY TO CONTACT ***YOU*** if you fork or branch this project!!!
 cache_max_age_days = 365 # -1 to never refetch, 0 to always refetch
 ```
