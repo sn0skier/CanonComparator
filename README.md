@@ -51,7 +51,7 @@ cache = "~/.cache/cancomp/mb_cache.sqlite"
 
 [musicbrainz]
 app_name = "CanonComparator"
-version = "0.1.1"
+version = "0.1.2"
 contact = "https://github.com/sn0skier/CanonComparator" # REPLACE WITH A WAY TO CONTACT ***YOU*** if you fork or branch this project!!!
 cache_max_age_days = 365 # -1 to never refetch, 0 to always refetch
 ```
@@ -105,8 +105,8 @@ Each row represents a single MusicBrainz release-group (RGID) present in your li
 | `title` | Release-group title as reported by the library provider (Lidarr) |
 | `owned_track_count` | Total number of tracks you own for this release-group (all discs summed) |
 | `canon_track_counts` | Track counts considered “canon” (from overrides or MB mode: see `mb_mode_track_count`) |
-| `min_owned_minus_canon` | Minimum difference between track count in your library and any canon value (0 is ideal) |
-| `owned_matches_canon` | `True` if your library's track count matches any canon value (`min_owned_minus_canon` = 0) |
+| `min_owned_minus_canon` | If any canon count matches owned, this is 0. Otherwise it is the closest signed difference between owned and canon counts (negative means you own fewer tracks than the nearest canon value; positive means more). Blank if canon counts are unavailable. |
+| `owned_matches_canon` | `True` if your library's track count matches any canon value (`min_owned_minus_canon` = 0). Blank if canon counts are unavailable (e.g., MB fetch failed and no override exists). |
 | `canon_source` | Where canon values came from (`override`, `mb_mode`, or `none`) |
 | `mb_mode_track_count` | Most common track count among MB releases in this release-group |
 | `diff_owned_minus_mode` | Your library's track count minus MB mode track count |
@@ -114,6 +114,7 @@ Each row represents a single MusicBrainz release-group (RGID) present in your li
 | `owned_trackcount_release_count` | Number of MB releases that match your library's track count |
 | `mb_release_count` | Total number of MB releases in the release-group |
 | `mb_histogram_tracks_releases_json` | JSON mapping `"TrackCount": ReleaseCount` |
+| `mb_fetch_status` | How MB data was obtained for this RGID (cached, fetched (not in cache), fetched (cache expired), or failed (...)). If it’s failed, MB-derived fields may be blank. |
 | `override_suggestion` | Ready-to-copy entry for `overrides.toml` |
 
 ---

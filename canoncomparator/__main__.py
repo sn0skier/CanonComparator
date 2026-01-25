@@ -96,19 +96,26 @@ def main() -> int:
     mb_session = create_mb_session(cfg)
 
     mb_stats = {}
+    mb_status = {}
     total = len(items)
+
     for i, it in enumerate(items, start=1):
-        stats, status = fetch_rg_stats(
-            session=mb_session,
-            cache_path=cache_path,
-            rgid=it.rgid,
-            max_age_days=max_age_days,
-        )
+        try:
+            stats, status = fetch_rg_stats(
+                session=mb_session,
+                cache_path=cache_path,
+                rgid=it.rgid,
+                max_age_days=max_age_days,
+            )
+        except Exception as e:
+            stats, status = None, f"failed ({type(e).__name__})"
+
         print(f"[{i}/{total}] MB {status}: {it.rgid}")
         mb_stats[it.rgid] = stats
+        mb_status[it.rgid] = status
 
     # Merge + write CSV (Excel-friendly UTF-8 with BOM)
-    rows = build_rows(items, mb_stats, overrides)
+    rows = build_rows(items, mb_stats, mb_status, overrides)
 
     if args.out:
         out_path = Path(args.out)
@@ -133,6 +140,7 @@ def main() -> int:
         "owned_trackcount_release_count",
         "mb_release_count",
         "mb_histogram_tracks_releases_json",
+        "mb_fetch_status",
         "override_suggestion",
     ]
 

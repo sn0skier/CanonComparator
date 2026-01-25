@@ -21,12 +21,15 @@ def build_override_suggestion(rgid: str, owned: int, mb_mode: int | None, label:
 
 def build_rows(
     items: List[LibraryItem],
-    mb_stats: Dict[str, MbRgStats],
+    mb_stats: Dict[str, MbRgStats | None],
+    mb_status: Dict[str, str],
     overrides: Dict[str, List[int]],
 ) -> List[dict]:
     rows: List[dict] = []
     for it in items:
         st = mb_stats.get(it.rgid)
+        status = mb_status.get(it.rgid, "")
+        mb_ok = (st is not None)
 
         mode_tc = st.mode_track_count if st else None
         hist = st.histogram if st else {}
@@ -45,7 +48,11 @@ def build_rows(
             canon_counts = [mode_tc] if mode_tc is not None else []
             canon_source = "mb_mode"
 
-        owned_matches_canon = True if not canon_counts else (it.owned_track_count in canon_counts)
+        if not canon_counts:
+            # If we have no override and MB didn't give us a mode, we can't evaluate.
+            owned_matches_canon = "" if (not mb_ok and canon_source == "mb_mode") else True
+        else:
+            owned_matches_canon = (it.owned_track_count in canon_counts)
 
         override_suggestion = build_override_suggestion(
             rgid=it.rgid,
@@ -56,9 +63,18 @@ def build_rows(
 
         diff = (it.owned_track_count - mode_tc) if (mode_tc is not None) else ""
 
-        min_owned_minus_canon = 0 if not canon_counts else min(
-            it.owned_track_count - c for c in canon_counts
-        )
+        if not canon_counts:
+            # No canon counts available (e.g., MB failed and no override) -> unknown
+            min_owned_minus_canon = ""
+        else:
+            diffs = [it.owned_track_count - c for c in canon_counts]
+            if any(d == 0 for d in diffs):
+                min_owned_minus_canon = 0
+            else:
+                min_abs = min(abs(d) for d in diffs)
+                closest = [d for d in diffs if abs(d) == min_abs]
+                # If tie, choose the most negative (so below-canon shows negative)
+                min_owned_minus_canon = min(closest)
 
         rows.append({
             "rgid": it.rgid,
@@ -80,6 +96,7 @@ def build_rows(
             "mb_release_count": st.release_count if st else "",
 
             "mb_histogram_tracks_releases_json": hist,
+            "mb_fetch_status": status,
             "override_suggestion": override_suggestion,
         })
 

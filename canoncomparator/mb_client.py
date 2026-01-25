@@ -3,11 +3,11 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+import random
+import requests
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, Tuple
-
-import requests
 
 
 MB_BASE = "https://musicbrainz.org/ws/2"
@@ -42,17 +42,70 @@ def create_mb_session(cfg: dict) -> requests.Session:
 
 
 def _mb_get(session: requests.Session, path: str, params: dict) -> dict:
+    """
+    MusicBrainz GET with:
+      - global 1 req/sec throttling (via _MB_MIN_INTERVAL / _last_mb_request)
+      - retries on transient network errors and 429/5xx responses
+      - exponential backoff with small jitter
+    """
     global _last_mb_request
-    now = time.time()
-    dt = now - _last_mb_request
-    if dt < _MB_MIN_INTERVAL:
-        time.sleep(_MB_MIN_INTERVAL - dt)
 
-    url = f"{MB_BASE}{path}"
-    r = session.get(url, params=params, timeout=60)
-    _last_mb_request = time.time()
-    r.raise_for_status()
-    return r.json()
+    max_retries = 5
+    last_exc: Exception | None = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            # --- polite throttling (keep your original behavior) ---
+            now = time.time()
+            dt = now - _last_mb_request
+            if dt < _MB_MIN_INTERVAL:
+                time.sleep(_MB_MIN_INTERVAL - dt)
+
+            url = f"{MB_BASE}{path}"
+            r = session.get(url, params=params, timeout=60)
+
+            # Update last request time after we actually attempted a request
+            _last_mb_request = time.time()
+
+            # Retry on "too many requests" or transient server errors
+            if r.status_code in (429, 500, 502, 503, 504):
+                # Respect Retry-After if present
+                ra = r.headers.get("Retry-After")
+                if ra is not None:
+                    try:
+                        sleep_s = float(ra)
+                    except ValueError:
+                        sleep_s = 1.0
+                else:
+                    # Exponential backoff with a little jitter, capped
+                    sleep_s = min(30.0, (2 ** attempt)) + random.uniform(0.0, 0.5)
+
+                if attempt < max_retries:
+                    print(f"MB retry {attempt+1}/{max_retries} (HTTP {r.status_code}); sleeping {sleep_s:.1f}s")
+                    time.sleep(sleep_s)
+                    continue
+
+            r.raise_for_status()
+            return r.json()
+
+        except (
+            requests.exceptions.Timeout,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.SSLError,
+            requests.exceptions.ChunkedEncodingError,
+        ) as e:
+            last_exc = e
+            if attempt < max_retries:
+                sleep_s = min(30.0, (2 ** attempt)) + random.uniform(0.0, 0.5)
+                print(f"MB retry {attempt+1}/{max_retries} (network); sleeping {sleep_s:.1f}s")
+                time.sleep(sleep_s)
+                continue
+            raise
+
+    # Defensive: should never reach, but keeps type checkers happy
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("MB request failed unexpectedly without an exception")
 
 
 def _release_total_tracks(release_obj: dict) -> Optional[int]:
@@ -141,17 +194,18 @@ def fetch_rg_stats(
     cache_path: str | Path,
     rgid: str,
     max_age_days: float = 30.0,
-) -> MbRgStats:
+) -> Tuple[Optional[MbRgStats], str]:
     cache_path = Path(cache_path).expanduser()
     cache_path.parent.mkdir(parents=True, exist_ok=True)
 
     conn = sqlite3.connect(str(cache_path))
     try:
         _ensure_cache(conn)
-        
+
         row = conn.execute(
-            "SELECT rgid, fetched_at, release_count, mode_track_count, histogram_json FROM rg_cache WHERE rgid=?",
-            (rgid,)
+            "SELECT rgid, fetched_at, release_count, mode_track_count, histogram_json "
+            "FROM rg_cache WHERE rgid=?",
+            (rgid,),
         ).fetchone()
 
         if row:
@@ -168,64 +222,62 @@ def fetch_rg_stats(
             if max_age_days < 0:
                 return cached_stats, "cached"
             if max_age_days == 0:
-                # force refetch
-                pass
+                fetch_reason = "fetched (forced)"
             elif (time.time() - float(fetched_at)) <= max_age_days * 86400:
                 return cached_stats, "cached"
             else:
-                # expired -> refetch
-                pass
-
-            # If we reach here, we're refetching and we know why
-            fetch_reason = "fetched (cache expired)" if max_age_days != 0 else "fetched (forced)"
+                fetch_reason = "fetched (cache expired)"
         else:
             fetch_reason = "fetched (not in cache)"
 
-        # Browse releases in release-group with media info
-        # We request inc=media so we can sum track-count across discs.
-        limit = 100
-        offset = 0
+        # --- MB fetch (may fail); do NOT crash the whole run ---
+        try:
+            limit = 100
+            offset = 0
+            hist: Dict[int, int] = {}
+            release_count = 0
 
-        hist: Dict[int, int] = {}
-        release_count = 0
+            while True:
+                data = _mb_get(session, "/release", params={
+                    "release-group": rgid,
+                    "inc": "media",
+                    "fmt": "json",
+                    "limit": str(limit),
+                    "offset": str(offset),
+                })
 
-        while True:
-            data = _mb_get(session, "/release", params={
-                "release-group": rgid,
-                "inc": "media",
-                "fmt": "json",
-                "limit": str(limit),
-                "offset": str(offset),
-            })
+                releases = data.get("releases", [])
+                if not isinstance(releases, list):
+                    releases = []
 
-            releases = data.get("releases", [])
-            if not isinstance(releases, list):
-                releases = []
+                for rel in releases:
+                    release_count += 1
+                    tc = _release_total_tracks(rel)
+                    if tc is None:
+                        continue
+                    hist[tc] = hist.get(tc, 0) + 1
 
-            for rel in releases:
-                release_count += 1
-                tc = _release_total_tracks(rel)
-                if tc is None:
-                    continue
-                hist[tc] = hist.get(tc, 0) + 1
+                total = data.get("release-count")
+                if not isinstance(total, int):
+                    break
+                offset += limit
+                if offset >= total:
+                    break
 
-            # paging
-            total = data.get("release-count")
-            if not isinstance(total, int):
-                break
-            offset += limit
-            if offset >= total:
-                break
+            mode_tc = _mode_from_hist(hist)
+            stats = MbRgStats(
+                rgid=rgid,
+                release_count=release_count,
+                mode_track_count=mode_tc,
+                histogram=hist,
+                fetched_at=time.time(),
+            )
+            _write_cache(conn, stats)
+            return stats, fetch_reason
 
-        mode_tc = _mode_from_hist(hist)
-        stats = MbRgStats(
-            rgid=rgid,
-            release_count=release_count,
-            mode_track_count=mode_tc,
-            histogram=hist,
-            fetched_at=time.time(),
-        )
-        _write_cache(conn, stats)
-        return stats, fetch_reason
+        except Exception as e:
+            # Keep going; CSV row will just have blank MB fields
+            return None, f"failed ({type(e).__name__})"
+
     finally:
         conn.close()
