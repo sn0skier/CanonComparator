@@ -54,12 +54,15 @@ def build_rows(
         else:
             owned_matches_canon = (it.owned_track_count in canon_counts)
 
-        override_suggestion = build_override_suggestion(
-            rgid=it.rgid,
-            owned=it.owned_track_count,
-            mb_mode=mode_tc,
-            label=label,
-        )
+        if it.rgid in overrides:
+            override_suggestion = "Override already present"
+        else:
+            override_suggestion = build_override_suggestion(
+                rgid=it.rgid,
+                owned=it.owned_track_count,
+                mb_mode=mode_tc,
+                label=label,
+            )
 
         diff = (it.owned_track_count - mode_tc) if (mode_tc is not None) else ""
 
